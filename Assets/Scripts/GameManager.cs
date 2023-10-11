@@ -1,26 +1,19 @@
-using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
+using JetBrains.Annotations;
 using UnityEngine;
-using UnityEngine.AI;
 
 public class GameManager : MonoBehaviour
 {
-
-    // must be singleton
     public static GameManager instance = null;
 
-    // public GameObject enemy;
+    public struct PlayerInfo
+    {
+        public Transform headTransform;
+        public Player player;
+        [CanBeNull] public AIBrain aiBrain; // This can be null if the player doesn't have an AIBrain component.
+    }
 
-
-
-    // I feel like it makes the most sense to just store the Transforms of people's heads.
-    // because that's what the visibility calculations are going to be using anyways.
-    public List<Transform> players = new List<Transform>();
-    public float maxAngle = 120;
-
-    public LayerMask seeEnemyMask;
-
+    public Dictionary<int, PlayerInfo> playersDictionary = new Dictionary<int, PlayerInfo>();
 
     private void Awake()
     {
@@ -28,66 +21,57 @@ public class GameManager : MonoBehaviour
             instance = this;
         else if (instance != this)
             Destroy(gameObject);
+
+        // Register each player's AIBrain (if it exists) and head transform in the dictionary
+        foreach (var player in GameObject.FindGameObjectsWithTag("Player"))
+        {
+            Player playerScript = player.GetComponent<Player>();
+            Transform headTransform = playerScript.head;
+            AIBrain aiBrain = player.GetComponent<AIBrain>(); // This will be null if there's no AIBrain component.
+            RegisterPlayer(player, playerScript, aiBrain, headTransform);
+        }
     }
 
-    // Start is called before the first frame update
-    void Start()
+    public void RegisterPlayer(GameObject obj, Player player, AIBrain aiBrain, Transform headTransform)
     {
-        // for (int i = 0; i < 1000; i++)
-        // {
-        //     NavMesh.SamplePosition(new Vector3(Random.Range(-50, 50), Random.Range(0, 20), Random.Range(-50, 50)), out var hit, Mathf.Infinity, NavMesh.AllAreas);
-        //     var myRandomPositionInsideNavMesh = hit.position;
-        //
-        //     Instantiate(enemy, myRandomPositionInsideNavMesh, Quaternion.identity);
-        // }
-
-        // add all existing AIs in the scene to the players List
-        players.AddRange(GameObject.FindGameObjectsWithTag("Player").ToList().ConvertAll<Transform>(go => go.GetComponent<AIBrain>().head));
+        int id = obj.GetInstanceID();
+        PlayerInfo info = new PlayerInfo
+        {
+            headTransform = headTransform,
+            player = player,
+            aiBrain = aiBrain // This can be null.
+        };
+        if (!playersDictionary.ContainsKey(id))
+        {
+            playersDictionary.Add(id, info);
+        }
     }
 
-    // Update is called once per frame
-    void Update()
+    public void RemovePlayer(GameObject player)
     {
-        // // better to do this per player if we can't optimize this down from O(n^2)
-        // // For all player positions, find which are visible to which
-        // foreach (var player in players)
-        // {
-        //     Transform enemy;
-        //
-        //     // you have one player
-        //     // for all other players, find which are visible to this player
-        //     foreach (var otherPlayer in players)
-        //     {
-        //         // don't return your self
-        //         if (player == otherPlayer)
-        //         {
-        //             continue;
-        //         }
-        //
-        //         Vector3 relativeNormalizedPos = (otherPlayer.position - player.position).normalized;
-        //         float dot = Vector3.Dot(relativeNormalizedPos, player.forward);
-        //
-        //         // angle difference between looking direction and direction to item (radians)
-        //         float angle = Mathf.Acos(dot);
-        //
-        //         float maxAngleRadians = Mathf.Deg2Rad * maxAngle;
-        //
-        //         if(angle > maxAngleRadians)
-        //         {
-        //             // outside of player's vision
-        //             continue;
-        //         }
-        //
-        //         if (Physics.Linecast(player.position, player.position, out _, seeEnemyMask,
-        //             QueryTriggerInteraction.Ignore))
-        //         {
-        //             // something obscuring other player
-        //             continue;
-        //         }
-        //
-        //         enemy = otherPlayer;
-        //         break;
-        //     }
-        // }
+        int id = player.GetInstanceID();
+        if (playersDictionary.ContainsKey(id))
+        {
+            playersDictionary.Remove(id);
+        }
+    }
+
+    public PlayerInfo? GetPlayerInfo(GameObject obj)
+    {
+        int id = obj.GetInstanceID();
+        if (playersDictionary.TryGetValue(id, out var playerInfo))
+        {
+            return playerInfo;
+        }
+        return null;
+    }
+
+    public void DamagePlayer(GameObject player, float damage)
+    {
+        PlayerInfo? info = GetPlayerInfo(player);
+        if (info.HasValue)
+        {
+            info.Value.player.DecreaseHealth(damage);
+        }
     }
 }
